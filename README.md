@@ -67,10 +67,12 @@ All runtime tuning values are near the top of `steering_wheel.py`.
 | `CAMERA_INDEX` | `0` | Webcam index. |
 | `DEAD_ZONE_DEG` | `10` | Neutral angle range that stays straight. |
 | `RELEASE_ZONE_DEG` | `5` | Hysteresis used when releasing steering. |
-| `STEER_MAX_OFF` | `0.12` | Maximum short release in the subtle steering pulse. |
+| `STEER_PULSE_PERIOD` | `0.24` | Timing window used to approximate proportional arrow-key input. |
+| `STEER_MIN_ON` | `0.03` | Minimum key-on time for a small steering command. |
 | `SOFT_ZONE_DEG` | `35` | Angle at which progressive steering reaches full input. |
 | `STEERING_RESPONSE` | `1.8` | Higher values make small tilts gentler. |
 | `FULL_STEER_STRENGTH` | `0.85` | Strength at which steering becomes a continuous heavy turn. |
+| `STEER_COMMAND_RATE` | `3.0` | Maximum normalized steering change per second. |
 | `FLIP_CAMERA` | `True` | Mirrors the camera for a selfie-style view. |
 | `GRACE_FRAMES` | `8` | Frames allowed before all keys are released. |
 | `OPEN_FINGER_THRESH` | `3` | Extended fingers needed to classify an open hand. |

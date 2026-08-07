@@ -21,10 +21,11 @@ CALIBRATION_FRAMES = 45
 POSE_CONFIRM_FRAMES = 3
 ANGLE_SMOOTHING    = 0.32
 RELEASE_ZONE_DEG   = 5
-STEER_PULSE_PERIOD = 0.20
-STEER_MAX_OFF      = 0.12
+STEER_PULSE_PERIOD = 0.24
+STEER_MIN_ON       = 0.03
 STEERING_RESPONSE  = 1.8
 FULL_STEER_STRENGTH = 0.85
+STEER_COMMAND_RATE = 3.0
 
 CLR_WHEEL   = (80, 200, 255)
 CLR_LEFT    = (60, 120, 255)
@@ -165,6 +166,8 @@ class SteeringController:
         self.pose_counts = [0, 0]
         self.steer_pulse_direction = None
         self.steer_pulse_started = 0.0
+        self.steer_command = 0.0
+        self.last_steer_time = None
 
     @property
     def calibrated(self):
@@ -205,6 +208,8 @@ class SteeringController:
         self.pose_counts = [0, 0]
         self.steer_pulse_direction = None
         self.steer_pulse_started = 0.0
+        self.steer_command = 0.0
+        self.last_steer_time = None
 
     def _calibrate(self, raw_angle):
         self.calibration_samples.append(raw_angle)
@@ -230,9 +235,9 @@ class SteeringController:
             self._press(key)
             return
 
-        off_time = STEER_MAX_OFF * (1.0 - min(1.0, strength))
+        on_time = STEER_MIN_ON + (STEER_PULSE_PERIOD - STEER_MIN_ON) * min(1.0, strength)
         elapsed = (time.monotonic() - self.steer_pulse_started) % STEER_PULSE_PERIOD
-        if elapsed < STEER_PULSE_PERIOD - off_time:
+        if elapsed < on_time:
             self._press(key)
         else:
             self._release(key)
@@ -252,31 +257,51 @@ class SteeringController:
         relative_angle = wrap_angle(raw_angle_deg - self.neutral_angle)
         angle = self._smooth_angle(relative_angle)
 
-        direction = "STRAIGHT"
+        target_direction = "STRAIGHT"
         if angle < -DEAD_ZONE_DEG:
-            direction = "LEFT"
+            target_direction = "LEFT"
         elif angle > DEAD_ZONE_DEG:
-            direction = "RIGHT"
-        elif self.keys_held[Key.left] and angle <= -RELEASE_ZONE_DEG:
-            direction = "LEFT"
-        elif self.keys_held[Key.right] and angle >= RELEASE_ZONE_DEG:
-            direction = "RIGHT"
+            target_direction = "RIGHT"
+        elif self.steer_pulse_direction == Key.left and angle <= -RELEASE_ZONE_DEG:
+            target_direction = "LEFT"
+        elif self.steer_pulse_direction == Key.right and angle >= RELEASE_ZONE_DEG:
+            target_direction = "RIGHT"
 
-        strength = 0.0
-        if direction == "LEFT":
+        target_command = 0.0
+        if target_direction == "LEFT":
             normalized = max(0.0, min(1.0, (abs(angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
-            strength = normalized ** STEERING_RESPONSE
+            target_command = -(normalized ** STEERING_RESPONSE)
+        elif target_direction == "RIGHT":
+            normalized = max(0.0, min(1.0, (abs(angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
+            target_command = normalized ** STEERING_RESPONSE
+
+        now = time.monotonic()
+        if self.last_steer_time is None:
+            self.last_steer_time = now
+        dt = min(0.1, max(0.0, now - self.last_steer_time))
+        self.last_steer_time = now
+        max_change = STEER_COMMAND_RATE * dt
+        command_delta = target_command - self.steer_command
+        if abs(command_delta) <= max_change:
+            self.steer_command = target_command
+        else:
+            self.steer_command += math.copysign(max_change, command_delta)
+
+        strength = abs(self.steer_command)
+        if self.steer_command < -0.02:
+            direction = "LEFT"
             self._steer_with_micro_pulse(Key.left, strength)
             self._release(Key.right)
-        elif direction == "RIGHT":
-            normalized = max(0.0, min(1.0, (abs(angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
-            strength = normalized ** STEERING_RESPONSE
+        elif self.steer_command > 0.02:
+            direction = "RIGHT"
             self._steer_with_micro_pulse(Key.right, strength)
             self._release(Key.left)
         else:
+            direction = "STRAIGHT"
             self._release(Key.left)
             self._release(Key.right)
             self.steer_pulse_direction = None
+            self.steer_command = 0.0
 
         return angle, direction, strength
 
