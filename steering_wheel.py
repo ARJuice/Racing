@@ -258,24 +258,38 @@ class SteeringController:
         angle = self._smooth_angle(relative_angle)
 
         target_direction = "STRAIGHT"
-        if angle < -DEAD_ZONE_DEG:
+        if relative_angle < -DEAD_ZONE_DEG:
             target_direction = "LEFT"
-        elif angle > DEAD_ZONE_DEG:
+        elif relative_angle > DEAD_ZONE_DEG:
             target_direction = "RIGHT"
-        elif self.steer_pulse_direction == Key.left and angle <= -RELEASE_ZONE_DEG:
+        elif self.steer_pulse_direction == Key.left and relative_angle <= -RELEASE_ZONE_DEG:
             target_direction = "LEFT"
-        elif self.steer_pulse_direction == Key.right and angle >= RELEASE_ZONE_DEG:
+        elif self.steer_pulse_direction == Key.right and relative_angle >= RELEASE_ZONE_DEG:
             target_direction = "RIGHT"
 
         target_command = 0.0
         if target_direction == "LEFT":
-            normalized = max(0.0, min(1.0, (abs(angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
+            normalized = max(0.0, min(1.0, (abs(relative_angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
             target_command = -(normalized ** STEERING_RESPONSE)
         elif target_direction == "RIGHT":
-            normalized = max(0.0, min(1.0, (abs(angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
+            normalized = max(0.0, min(1.0, (abs(relative_angle) - DEAD_ZONE_DEG) / (SOFT_ZONE_DEG - DEAD_ZONE_DEG)))
             target_command = normalized ** STEERING_RESPONSE
 
         now = time.monotonic()
+        if target_command == 0.0:
+            self._release(Key.left)
+            self._release(Key.right)
+            self.steer_pulse_direction = None
+            self.steer_command = 0.0
+            self.last_steer_time = now
+            return angle, "STRAIGHT", 0.0
+
+        if target_command and self.steer_command and target_command * self.steer_command < 0:
+            self._release(Key.left)
+            self._release(Key.right)
+            self.steer_pulse_direction = None
+            self.steer_command = 0.0
+
         if self.last_steer_time is None:
             self.last_steer_time = now
         dt = min(0.1, max(0.0, now - self.last_steer_time))
